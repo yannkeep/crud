@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ ATELIERS TERRITORIAUX</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root { --green: #00ff9d; --blue: #00d4ff; --pink: #ff0080; --yellow: #ffea00; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Share Tech Mono', monospace; background: #000; color: #fff; height: 100vh; overflow: hidden; }
+        
+        .app { display: grid; grid-template-columns: 1fr 380px; grid-template-rows: 45px 1fr; height: 100vh; }
+        @media (max-width: 800px) { .app { grid-template-columns: 1fr; } .sidebar { display: none; } }
+        
+        header { grid-column: 1 / -1; background: #0a0a0a; border-bottom: 2px solid var(--green); display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; }
+        .logo { font-family: 'Orbitron'; font-size: 0.85rem; color: var(--green); text-shadow: 0 0 10px var(--green); }
+        .tabs { display: flex; }
+        .tab { font-family: 'Orbitron'; font-size: 0.65rem; padding: 0.6rem 1rem; background: none; border: none; color: #666; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab:hover { color: var(--green); }
+        .tab.active { color: var(--green); border-bottom-color: var(--green); background: rgba(0,255,157,0.1); }
+        .stats { display: flex; gap: 1.5rem; }
+        .stat-val { font-family: 'Orbitron'; font-size: 1rem; color: var(--green); }
+        .stat-lbl { font-size: 0.55rem; color: #555; }
+        
+        main { position: relative; }
+        #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        .leaflet-container { background: #000; }
+        .leaflet-tile-pane { filter: saturate(0.1) brightness(0.25) contrast(1.5); }
+        
+        #graph-view { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #050508; display: none; }
+        #graph-view.active { display: block; }
+        #graph-canvas { width: 100%; height: 100%; }
+        
+        .sidebar { background: #0a0a0a; border-left: 1px solid #222; display: flex; flex-direction: column; overflow: hidden; }
+        .sidebar-header { padding: 0.75rem; border-bottom: 1px solid #222; display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-title { font-family: 'Orbitron'; font-size: 0.65rem; color: var(--blue); }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 0.75rem; }
+        
+        .panel { display: none; }
+        .panel.active { display: block; }
+        
+        .card { background: #111; border: 1px solid #333; padding: 0.6rem; margin-bottom: 0.5rem; cursor: pointer; transition: all 0.15s; }
+        .card:hover { border-color: var(--green); }
+        .card-title { font-family: 'Orbitron'; font-size: 0.75rem; color: var(--green); margin-bottom: 0.2rem; }
+        .card-meta { font-size: 0.65rem; color: #666; }
+        .card-status { display: inline-block; font-size: 0.55rem; padding: 0.1rem 0.3rem; margin-top: 0.3rem; }
+        .card-status.recruiting { background: rgba(255,234,0,0.2); color: var(--yellow); border: 1px solid var(--yellow); }
+        .card-status.ready { background: rgba(0,255,157,0.2); color: var(--green); border: 1px solid var(--green); }
+        
+        .pbar { height: 4px; background: #333; margin-top: 0.4rem; }
+        .pbar-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--blue)); }
+        
+        .form-section { background: #111; border: 1px solid #333; padding: 0.75rem; margin-bottom: 0.75rem; }
+        .form-section-title { font-family: 'Orbitron'; font-size: 0.6rem; color: var(--blue); margin-bottom: 0.5rem; }
+        .form-row { margin-bottom: 0.5rem; }
+        .form-label { font-size: 0.6rem; color: #666; margin-bottom: 0.2rem; display: block; }
+        .form-input { width: 100%; font-family: 'Share Tech Mono'; font-size: 0.8rem; padding: 0.4rem; background: #000; border: 1px solid #333; color: #fff; }
+        .form-input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 5px rgba(0,255,157,0.3); }
+        textarea.form-input { min-height: 50px; resize: vertical; }
+        
+        .btn { font-family: 'Orbitron'; font-size: 0.65rem; padding: 0.5rem 0.75rem; border: none; cursor: pointer; transition: all 0.15s; }
+        .btn-primary { background: var(--green); color: #000; }
+        .btn-primary:hover { box-shadow: 0 0 15px var(--green); }
+        .btn-secondary { background: none; border: 1px solid var(--blue); color: var(--blue); }
+        .btn-danger { background: none; border: 1px solid var(--pink); color: var(--pink); }
+        .btn-sm { padding: 0.3rem 0.5rem; font-size: 0.6rem; }
+        .btn-block { width: 100%; }
+        .btn-group { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+        
+        .selected-info { background: rgba(0,255,157,0.1); border: 1px solid var(--green); padding: 0.5rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
+        .selected-info.empty { background: #111; border: 1px dashed #333; color: #555; text-align: center; }
+        
+        .map-ctrls { position: absolute; top: 10px; left: 10px; z-index: 1000; display: flex; flex-direction: column; gap: 5px; }
+        .map-btn { width: 32px; height: 32px; background: #111; border: 1px solid var(--green); color: var(--green); cursor: pointer; font-size: 0.9rem; }
+        .map-btn:hover, .map-btn.active { background: var(--green); color: #000; }
+        
+        .leaflet-popup-content-wrapper { background: #111; color: #fff; border: 1px solid var(--green); border-radius: 0; }
+        .leaflet-popup-tip { background: #111; }
+        .popup-title { font-family: 'Orbitron'; color: var(--green); font-size: 0.8rem; }
+        .popup-meta { font-size: 0.7rem; color: #888; margin: 0.3rem 0; }
+        .popup-btn { font-family: 'Orbitron'; font-size: 0.6rem; padding: 0.3rem 0.6rem; background: var(--green); color: #000; border: none; cursor: pointer; margin-top: 0.3rem; }
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: flex; align-items: center; justify-content: center; z-index: 9000; }
+        .modal-overlay.hidden { display: none; }
+        .modal { background: #111; border: 1px solid var(--green); width: 90%; max-width: 400px; }
+        .modal-header { padding: 0.75rem; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-family: 'Orbitron'; color: var(--green); font-size: 0.8rem; }
+        .modal-close { background: none; border: none; color: var(--pink); font-size: 1.2rem; cursor: pointer; }
+        .modal-body { padding: 0.75rem; }
+        .modal-footer { padding: 0.75rem; border-top: 1px solid #333; display: flex; gap: 0.5rem; justify-content: flex-end; }
+        
+        .toast { position: fixed; bottom: -50px; left: 50%; transform: translateX(-50%); background: #111; border: 1px solid var(--green); padding: 0.5rem 1rem; z-index: 9999; transition: bottom 0.3s; font-size: 0.75rem; }
+        .toast.show { bottom: 20px; }
+        
+        .legend { position: absolute; bottom: 10px; left: 10px; z-index: 1000; background: #111; border: 1px solid #333; padding: 0.5rem; font-size: 0.65rem; }
+        .legend-item { display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.2rem; color: #888; }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: var(--green); }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="logo">⚡ ATELIERS TERRITORIAUX</div>
+            <div class="tabs">
+                <button class="tab active" data-view="map">🗺️ Carte</button>
+                <button class="tab" data-view="graph">🕸️ Maillage</button>
+            </div>
+            <div class="stats">
+                <div><div class="stat-val" id="stat-nodes">0</div><div class="stat-lbl">Nœuds</div></div>
+                <div><div class="stat-val" id="stat-spots">0</div><div class="stat-lbl">Spots</div></div>
+                <div><div class="stat-val" id="stat-ready">0</div><div class="stat-lbl">Prêts</div></div>
+            </div>
+        </header>
+        
+        <main>
+            <div id="map"></div>
+            <div id="graph-view"><canvas id="graph-canvas"></canvas></div>
+            <div class="map-ctrls">
+                <button class="map-btn" id="btn-locate" title="Ma position">◎</button>
+                <button class="map-btn" id="btn-voronoi" title="Territoires">◇</button>
+            </div>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:#003b7a"></div> Bruxelles</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#e30613"></div> Wallonie</div>
+                <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div> Spot actif</div>
+            </div>
+        </main>
+        
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-title" id="sidebar-title">ATELIERS</div>
+                <button class="btn btn-primary btn-sm" id="btn-new">+ CRÉER</button>
+            </div>
+            <div class="sidebar-content">
+                <div class="panel active" id="panel-list"><div id="spots-list"></div></div>
+                <div class="panel" id="panel-edit">
+                    <div class="selected-info empty" id="selected-display">📍 Cliquez sur la carte</div>
+                    <div class="form-section">
+                        <div class="form-section-title">ORGANISATEUR</div>
+                        <div class="form-row"><label class="form-label">Pseudo</label><input class="form-input" id="f-name"></div>
+                        <div class="form-row"><label class="form-label">Lien trace</label><input class="form-input" id="f-url" placeholder="https://..."></div>
+                    </div>
+                    <div class="form-section">
+                        <div class="form-section-title">ATELIER</div>
+                        <div class="form-row"><label class="form-label">Thématique</label>
+                            <select class="form-input" id="f-theme">
+                                <option value="">Choisir...</option>
+                                <option value="mobilite">🚲 Mobilité</option>
+                                <option value="environnement">🌱 Environnement</option>
+                                <option value="social">🤝 Social</option>
+                                <option value="numerique">💻 Numérique</option>
+                                <option value="culture">🎭 Culture</option>
+                                <option value="economie">💼 Économie</option>
+                            </select>
+                        </div>
+                        <div class="form-row"><label class="form-label">Titre</label><input class="form-input" id="f-title"></div>
+                        <div class="form-row"><label class="form-label">Description</label><textarea class="form-input" id="f-desc"></textarea></div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-secondary" id="btn-cancel">Annuler</button>
+                        <button class="btn btn-primary" id="btn-save" style="flex:1">💾 Enregistrer</button>
+                    </div>
+                </div>
+                <div class="panel" id="panel-detail"><div id="detail-content"></div></div>
+            </div>
+        </aside>
+    </div>
+    
+    <div class="modal-overlay hidden" id="modal-join">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">Rejoindre</div><button class="modal-close" onclick="closeModal('modal-join')">×</button></div>
+            <div class="modal-body"><div class="form-row"><label class="form-label">Votre pseudo</label><input class="form-input" id="join-name"></div></div>
+            <div class="modal-footer"><button class="btn btn-secondary" onclick="closeModal('modal-join')">Annuler</button><button class="btn btn-primary" id="btn-join-ok">OK</button></div>
+        </div>
+    </div>
+    
+    <div class="toast" id="toast"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    (function waitL(){ if(typeof L==='undefined'){setTimeout(waitL,30);return;} init(); })();
+    
+    function init() {
+        // ══════════════════════════════════════════════════════════════════
+        // GENERATE NODES - Grille dense mais raisonnable
+        // ══════════════════════════════════════════════════════════════════
+        const NODES = [];
+        let id = 0;
+        
+        // Bruxelles - grille 0.008° (~800m)
+        for (let lat = 50.78; lat <= 50.90; lat += 0.008) {
+            for (let lon = 4.28; lon <= 4.48; lon += 0.008) {
+                NODES.push({ id: 'B' + (id++), lat, lon, zone: 'bxl', name: `BXL-${lat.toFixed(3)}/${lon.toFixed(3)}` });
+            }
+        }
+        
+        // Wallonie - principales villes, grille 0.01° (~1km)
+        const WAL_ZONES = [
+            { name: 'Namur', minLat: 50.44, maxLat: 50.48, minLon: 4.84, maxLon: 4.90 },
+            { name: 'Liège', minLat: 50.61, maxLat: 50.66, minLon: 5.54, maxLon: 5.62 },
+            { name: 'Charleroi', minLat: 50.40, maxLat: 50.44, minLon: 4.42, maxLon: 4.48 },
+            { name: 'Mons', minLat: 50.44, maxLat: 50.47, minLon: 3.94, maxLon: 3.98 },
+            { name: 'LLN', minLat: 50.66, maxLat: 50.69, minLon: 4.60, maxLon: 4.64 },
+            { name: 'Wavre', minLat: 50.71, maxLat: 50.73, minLon: 4.59, maxLon: 4.62 },
+            { name: 'Tournai', minLat: 50.60, maxLat: 50.62, minLon: 3.38, maxLon: 3.41 },
+            { name: 'Verviers', minLat: 50.58, maxLat: 50.60, minLon: 5.85, maxLon: 5.88 },
+            { name: 'Arlon', minLat: 49.67, maxLat: 49.69, minLon: 5.81, maxLon: 5.83 },
+            { name: 'Nivelles', minLat: 50.59, maxLat: 50.61, minLon: 4.32, maxLon: 4.35 },
+            { name: 'Waterloo', minLat: 50.71, maxLat: 50.73, minLon: 4.38, maxLon: 4.42 }
+        ];
+        
+        WAL_ZONES.forEach(z => {
+            for (let lat = z.minLat; lat <= z.maxLat; lat += 0.01) {
+                for (let lon = z.minLon; lon <= z.maxLon; lon += 0.01) {
+                    NODES.push({ id: 'W' + (id++), lat, lon, zone: 'wal', name: `${z.name}-${lat.toFixed(3)}/${lon.toFixed(3)}` });
+                }
+            }
+        });
+        
+        // ══════════════════════════════════════════════════════════════════
+        // STATE
+        // ══════════════════════════════════════════════════════════════════
+        const S = {
+            map: null,
+            spots: JSON.parse(localStorage.getItem('ateliers_v4') || '[]'),
+            selectedNode: null,
+            editingSpot: null,
+            joiningSpot: null,
+            layers: { canvas: null, voronoi: null },
+            showVoronoi: false,
+            view: 'map'
+        };
+        
+        // ══════════════════════════════════════════════════════════════════
+        // MAP
+        // ══════════════════════════════════════════════════════════════════
+        S.map = L.map('map', { center: [50.5, 4.5], zoom: 9, preferCanvas: true });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(S.map);
+        
+        // Canvas layer pour les nœuds (performance)
+        S.layers.canvas = L.layerGroup().addTo(S.map);
+        S.layers.voronoi = L.layerGroup();
+        
+        // ══════════════════════════════════════════════════════════════════
+        // RENDER NODES (canvas-based circles)
+        // ══════════════════════════════════════════════════════════════════
+        function renderMap() {
+            S.layers.canvas.clearLayers();
+            const claimed = new Set(S.spots.map(s => s.nodeId));
+            
+            NODES.forEach(n => {
+                const spot = S.spots.find(s => s.nodeId === n.id);
+                let color = n.zone === 'bxl' ? '#003b7a' : '#e30613';
+                let radius = 4;
+                let opacity = 0.6;
+                
+                if (spot) {
+                    color = spot.participants.length >= 5 ? '#00ff9d' : '#ffea00';
+                    radius = 6 + spot.participants.length;
+                    opacity = 1;
+                }
+                
+                const circle = L.circleMarker([n.lat, n.lon], {
+                    radius: radius,
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: opacity,
+                    weight: 1
+                });
+                
+                circle.on('click', () => {
+                    if (spot) {
+                        showDetail(spot.id);
+                    } else {
+                        selectNode(n);
+                    }
+                });
+                
+                circle.bindTooltip(n.name, { direction: 'top', className: 'node-tooltip' });
+                circle.addTo(S.layers.canvas);
+            });
+            
+            // Draw links between ready spots
+            S.spots.filter(s => s.participants.length >= 5).forEach(a => {
+                S.spots.filter(s => s.id !== a.id && s.participants.length >= 5).forEach(b => {
+                    const d = dist(a.lat, a.lon, b.lat, b.lon);
+                    if (d <= 8) {
+                        L.polyline([[a.lat, a.lon], [b.lat, b.lon]], {
+                            color: '#00d4ff',
+                            weight: 1,
+                            opacity: 0.4,
+                            dashArray: '4,8'
+                        }).addTo(S.layers.canvas);
+                    }
+                });
+            });
+        }
+        
+        function dist(lat1, lon1, lat2, lon2) {
+            const R = 6371;
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // VORONOI (simple circles)
+        // ══════════════════════════════════════════════════════════════════
+        function renderVoronoi() {
+            S.layers.voronoi.clearLayers();
+            const bounds = S.map.getBounds();
+            
+            NODES.filter(n => bounds.contains([n.lat, n.lon])).forEach(n => {
+                const spot = S.spots.find(s => s.nodeId === n.id);
+                const color = spot ? (spot.participants.length >= 5 ? '#00ff9d' : '#ffea00') : (n.zone === 'bxl' ? '#003b7a' : '#e30613');
+                
+                L.circle([n.lat, n.lon], {
+                    radius: 400,
+                    color: color,
+                    weight: 1,
+                    opacity: 0.3,
+                    fillOpacity: spot ? 0.15 : 0.03
+                }).addTo(S.layers.voronoi);
+            });
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // SIDEBAR LIST
+        // ══════════════════════════════════════════════════════════════════
+        function renderList() {
+            const el = document.getElementById('spots-list');
+            
+            if (S.spots.length === 0) {
+                el.innerHTML = '<div style="text-align:center;color:#555;padding:2rem;">Aucun atelier<br><small>Cliquez sur un nœud pour créer</small></div>';
+                return;
+            }
+            
+            el.innerHTML = S.spots.map(s => {
+                const pct = (s.participants.length / 9) * 100;
+                const status = s.participants.length >= 5 ? 'ready' : 'recruiting';
+                return `<div class="card" onclick="showDetail('${s.id}')">
+                    <div class="card-title">${s.title || s.nodeName}</div>
+                    <div class="card-meta">${s.theme || ''} • ${s.claimant} • ${s.participants.length}/9</div>
+                    <span class="card-status ${status}">${status === 'ready' ? '✓ PRÊT' : 'RECRUTEMENT'}</span>
+                    <div class="pbar"><div class="pbar-fill" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join('');
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // SELECT NODE
+        // ══════════════════════════════════════════════════════════════════
+        function selectNode(node) {
+            if (S.spots.some(s => s.nodeId === node.id)) {
+                toast('Spot déjà pris');
+                return;
+            }
+            S.selectedNode = node;
+            S.editingSpot = null;
+            showPanel('edit');
+            document.getElementById('sidebar-title').textContent = 'NOUVEAU SPOT';
+            document.getElementById('selected-display').className = 'selected-info';
+            document.getElementById('selected-display').innerHTML = `📍 <strong>${node.name}</strong><br><small>${node.zone === 'bxl' ? 'Bruxelles' : 'Wallonie'}</small>`;
+            clearForm();
+            S.map.setView([node.lat, node.lon], 14);
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // SHOW DETAIL
+        // ══════════════════════════════════════════════════════════════════
+        window.showDetail = function(id) {
+            const s = S.spots.find(x => x.id === id);
+            if (!s) return;
+            
+            showPanel('detail');
+            document.getElementById('sidebar-title').textContent = 'DÉTAIL';
+            
+            const pct = (s.participants.length / 9) * 100;
+            const status = s.participants.length >= 5 ? 'ready' : 'recruiting';
+            
+            // Find nearby ready spots
+            const matches = S.spots.filter(x => x.id !== s.id && x.participants.length >= 5)
+                .map(x => ({ spot: x, d: dist(s.lat, s.lon, x.lat, x.lon) }))
+                .filter(x => x.d <= 10)
+                .sort((a,b) => a.d - b.d);
+            
+            let html = `
+                <div class="form-section">
+                    <div style="font-family:Orbitron;color:var(--green);font-size:1rem;margin-bottom:0.3rem;">${s.title || s.nodeName}</div>
+                    <div style="font-size:0.7rem;color:#888;margin-bottom:0.5rem;">📍 ${s.nodeName}</div>
+                    <span class="card-status ${status}">${status === 'ready' ? '✓ PRÊT PRÉSENTIEL' : 'RECRUTEMENT'}</span>
+                    <div style="font-size:0.75rem;color:#666;margin-top:0.5rem;">${s.theme || ''} • Par ${s.claimant}</div>
+                    <p style="font-size:0.75rem;color:#888;margin-top:0.5rem;">${s.description || ''}</p>
+                    ${s.traceUrl ? `<a href="${s.traceUrl}" target="_blank" style="color:var(--blue);font-size:0.7rem;">→ Trace</a>` : ''}
+                </div>
+                <div class="form-section">
+                    <div class="form-section-title">PARTICIPANTS (${s.participants.length}/9)</div>
+                    <div class="pbar" style="margin-bottom:0.5rem;"><div class="pbar-fill" style="width:${pct}%"></div></div>
+            `;
+            
+            s.participants.forEach((p, i) => {
+                html += `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid #222;">
+                    <span style="color:${i===0?'var(--green)':'#888'}">${i===0?'👑 ':''}${p.name}</span>
+                    ${i > 0 ? `<button class="btn btn-danger btn-sm" onclick="removeP('${s.id}',${i})">×</button>` : ''}
+                </div>`;
+            });
+            
+            if (s.participants.length < 9) {
+                html += `<button class="btn btn-secondary btn-block" style="margin-top:0.5rem;" onclick="openJoin('${s.id}')">+ Ajouter</button>`;
+            }
+            html += '</div>';
+            
+            if (matches.length > 0) {
+                html += '<div class="form-section"><div class="form-section-title">🔗 MATCHES TERRITORIAUX</div>';
+                matches.forEach(m => {
+                    html += `<div class="card" onclick="showDetail('${m.spot.id}')">
+                        <div class="card-title">${m.spot.title || m.spot.nodeName}</div>
+                        <div class="card-meta">${m.d.toFixed(1)} km • ${m.spot.participants.length} participants</div>
+                    </div>`;
+                });
+                html += '</div>';
+            }
+            
+            html += `<div class="btn-group">
+                <button class="btn btn-secondary" onclick="showPanel('list');document.getElementById('sidebar-title').textContent='ATELIERS';">← Retour</button>
+                <button class="btn btn-danger" onclick="delSpot('${s.id}')">🗑️</button>
+                <button class="btn btn-primary" onclick="editSpot('${s.id}')" style="flex:1">✏️ Modifier</button>
+            </div>`;
+            
+            document.getElementById('detail-content').innerHTML = html;
+            S.map.setView([s.lat, s.lon], 14);
+        };
+        
+        // ══════════════════════════════════════════════════════════════════
+        // EDIT SPOT
+        // ══════════════════════════════════════════════════════════════════
+        window.editSpot = function(id) {
+            const s = S.spots.find(x => x.id === id);
+            if (!s) return;
+            S.editingSpot = s;
+            S.selectedNode = NODES.find(n => n.id === s.nodeId);
+            showPanel('edit');
+            document.getElementById('sidebar-title').textContent = 'MODIFIER';
+            document.getElementById('selected-display').className = 'selected-info';
+            document.getElementById('selected-display').innerHTML = `📍 <strong>${s.nodeName}</strong>`;
+            document.getElementById('f-name').value = s.claimant;
+            document.getElementById('f-url').value = s.traceUrl || '';
+            document.getElementById('f-theme').value = s.theme || '';
+            document.getElementById('f-title').value = s.title || '';
+            document.getElementById('f-desc').value = s.description || '';
+        };
+        
+        // ══════════════════════════════════════════════════════════════════
+        // SAVE
+        // ══════════════════════════════════════════════════════════════════
+        function save() {
+            const name = document.getElementById('f-name').value.trim();
+            const theme = document.getElementById('f-theme').value;
+            const title = document.getElementById('f-title').value.trim();
+            
+            if (!name) { toast('Pseudo requis'); return; }
+            if (!theme) { toast('Thématique requise'); return; }
+            if (!title) { toast('Titre requis'); return; }
+            if (!S.selectedNode && !S.editingSpot) { toast('Sélectionnez un nœud'); return; }
+            
+            if (S.editingSpot) {
+                S.editingSpot.claimant = name;
+                S.editingSpot.traceUrl = document.getElementById('f-url').value.trim();
+                S.editingSpot.theme = theme;
+                S.editingSpot.title = title;
+                S.editingSpot.description = document.getElementById('f-desc').value.trim();
+                toast('Modifié');
+            } else {
+                S.spots.push({
+                    id: 'S' + Date.now(),
+                    nodeId: S.selectedNode.id,
+                    nodeName: S.selectedNode.name,
+                    lat: S.selectedNode.lat,
+                    lon: S.selectedNode.lon,
+                    zone: S.selectedNode.zone,
+                    claimant: name,
+                    traceUrl: document.getElementById('f-url').value.trim(),
+                    theme, title,
+                    description: document.getElementById('f-desc').value.trim(),
+                    createdAt: new Date().toISOString(),
+                    participants: [{ name, joinedAt: new Date().toISOString() }]
+                });
+                toast('Spot créé !');
+            }
+            
+            persist();
+            renderMap();
+            renderList();
+            updateStats();
+            showPanel('list');
+            document.getElementById('sidebar-title').textContent = 'ATELIERS';
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // DELETE
+        // ══════════════════════════════════════════════════════════════════
+        window.delSpot = function(id) {
+            if (!confirm('Supprimer cet atelier ?')) return;
+            S.spots = S.spots.filter(s => s.id !== id);
+            persist();
+            renderMap();
+            renderList();
+            updateStats();
+            showPanel('list');
+            document.getElementById('sidebar-title').textContent = 'ATELIERS';
+            toast('Supprimé');
+        };
+        
+        // ══════════════════════════════════════════════════════════════════
+        // PARTICIPANTS
+        // ══════════════════════════════════════════════════════════════════
+        window.openJoin = function(id) {
+            S.joiningSpot = id;
+            document.getElementById('join-name').value = '';
+            document.getElementById('modal-join').classList.remove('hidden');
+        };
+        
+        window.closeModal = function(id) { document.getElementById(id).classList.add('hidden'); };
+        
+        function joinSpot() {
+            const name = document.getElementById('join-name').value.trim();
+            if (!name) { toast('Pseudo requis'); return; }
+            const s = S.spots.find(x => x.id === S.joiningSpot);
+            if (!s || s.participants.length >= 9) return;
+            if (s.participants.some(p => p.name.toLowerCase() === name.toLowerCase())) { toast('Pseudo pris'); return; }
+            
+            s.participants.push({ name, joinedAt: new Date().toISOString() });
+            persist();
+            renderMap();
+            updateStats();
+            closeModal('modal-join');
+            showDetail(s.id);
+            toast(s.participants.length === 5 ? '🎉 Quorum atteint !' : 'Ajouté');
+        }
+        
+        window.removeP = function(id, i) {
+            const s = S.spots.find(x => x.id === id);
+            if (!s || i === 0) return;
+            s.participants.splice(i, 1);
+            persist();
+            renderMap();
+            updateStats();
+            showDetail(s.id);
+            toast('Retiré');
+        };
+        
+        // ══════════════════════════════════════════════════════════════════
+        // GRAPH VIEW
+        // ══════════════════════════════════════════════════════════════════
+        function renderGraph() {
+            const canvas = document.getElementById('graph-canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            ctx.fillStyle = '#050508';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (S.spots.length === 0) {
+                ctx.fillStyle = '#444';
+                ctx.font = '14px Share Tech Mono';
+                ctx.textAlign = 'center';
+                ctx.fillText('Aucun atelier', canvas.width/2, canvas.height/2);
+                return;
+            }
+            
+            // Position nodes in circle
+            const cx = canvas.width / 2, cy = canvas.height / 2;
+            const r = Math.min(cx, cy) * 0.7;
+            const nodes = S.spots.map((s, i) => ({
+                s,
+                x: cx + Math.cos(i / S.spots.length * Math.PI * 2 - Math.PI/2) * r,
+                y: cy + Math.sin(i / S.spots.length * Math.PI * 2 - Math.PI/2) * r
+            }));
+            
+            // Links
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 1;
+            nodes.forEach((a, i) => {
+                nodes.slice(i+1).forEach(b => {
+                    if (a.s.participants.length >= 5 && b.s.participants.length >= 5) {
+                        const d = dist(a.s.lat, a.s.lon, b.s.lat, b.s.lon);
+                        if (d <= 10) {
+                            ctx.globalAlpha = 0.3;
+                            ctx.beginPath();
+                            ctx.moveTo(a.x, a.y);
+                            ctx.lineTo(b.x, b.y);
+                            ctx.stroke();
+                        }
+                    }
+                });
+            });
+            ctx.globalAlpha = 1;
+            
+            // Nodes
+            nodes.forEach(n => {
+                const ready = n.s.participants.length >= 5;
+                const size = 12 + n.s.participants.length * 3;
+                
+                // Glow
+                const g = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, size*1.5);
+                g.addColorStop(0, ready ? 'rgba(0,255,157,0.4)' : 'rgba(255,234,0,0.4)');
+                g.addColorStop(1, 'transparent');
+                ctx.fillStyle = g;
+                ctx.fillRect(n.x - size*2, n.y - size*2, size*4, size*4);
+                
+                // Circle
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, size, 0, Math.PI*2);
+                ctx.fillStyle = ready ? '#00ff9d' : '#ffea00';
+                ctx.fill();
+                
+                // Count
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 11px Orbitron';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(n.s.participants.length, n.x, n.y);
+                
+                // Label
+                ctx.fillStyle = '#888';
+                ctx.font = '10px Share Tech Mono';
+                ctx.fillText(n.s.title || n.s.nodeName, n.x, n.y + size + 12);
+            });
+            
+            // Legend
+            ctx.fillStyle = '#444';
+            ctx.font = '11px Share Tech Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText('🟢 Prêt (≥5)  🟡 Recrutement  ─── Lien territorial (<10km)', 10, canvas.height - 10);
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // UTILS
+        // ══════════════════════════════════════════════════════════════════
+        function showPanel(name) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.getElementById('panel-' + name).classList.add('active');
+        }
+        
+        function clearForm() {
+            ['f-name','f-url','f-theme','f-title','f-desc'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el.tagName === 'SELECT') el.selectedIndex = 0;
+                else el.value = '';
+            });
+        }
+        
+        function persist() { localStorage.setItem('ateliers_v4', JSON.stringify(S.spots)); }
+        
+        function updateStats() {
+            document.getElementById('stat-nodes').textContent = NODES.length;
+            document.getElementById('stat-spots').textContent = S.spots.length;
+            document.getElementById('stat-ready').textContent = S.spots.filter(s => s.participants.length >= 5).length;
+        }
+        
+        function toast(msg) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2500);
+        }
+        
+        // ══════════════════════════════════════════════════════════════════
+        // EVENTS
+        // ══════════════════════════════════════════════════════════════════
+        document.querySelectorAll('.tab').forEach(t => {
+            t.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+                this.classList.add('active');
+                S.view = this.dataset.view;
+                if (S.view === 'graph') {
+                    document.getElementById('graph-view').classList.add('active');
+                    setTimeout(renderGraph, 50);
+                } else {
+                    document.getElementById('graph-view').classList.remove('active');
+                }
+            });
+        });
+        
+        document.getElementById('btn-new').addEventListener('click', () => {
+            S.selectedNode = null;
+            S.editingSpot = null;
+            showPanel('edit');
+            document.getElementById('sidebar-title').textContent = 'NOUVEAU SPOT';
+            document.getElementById('selected-display').className = 'selected-info empty';
+            document.getElementById('selected-display').textContent = '📍 Cliquez sur la carte';
+            clearForm();
+        });
+        
+        document.getElementById('btn-cancel').addEventListener('click', () => {
+            showPanel('list');
+            document.getElementById('sidebar-title').textContent = 'ATELIERS';
+        });
+        
+        document.getElementById('btn-save').addEventListener('click', save);
+        document.getElementById('btn-join-ok').addEventListener('click', joinSpot);
+        
+        document.getElementById('btn-locate').addEventListener('click', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(p => S.map.setView([p.coords.latitude, p.coords.longitude], 14));
+            }
+        });
+        
+        document.getElementById('btn-voronoi').addEventListener('click', function() {
+            S.showVoronoi = !S.showVoronoi;
+            this.classList.toggle('active', S.showVoronoi);
+            if (S.showVoronoi) {
+                S.layers.voronoi.addTo(S.map);
+                renderVoronoi();
+            } else {
+                S.map.removeLayer(S.layers.voronoi);
+            }
+        });
+        
+        S.map.on('moveend zoomend', () => { if (S.showVoronoi) renderVoronoi(); });
+        
+        window.addEventListener('resize', () => { if (S.view === 'graph') renderGraph(); });
+        
+        // ══════════════════════════════════════════════════════════════════
+        // INIT
+        // ══════════════════════════════════════════════════════════════════
+        renderMap();
+        renderList();
+        updateStats();
+    }
+    </script>
+</body>
+</html>
